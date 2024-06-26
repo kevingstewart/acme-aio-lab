@@ -13,15 +13,18 @@ The above linked pages describe each proof validation in more detail, as a serie
 ----
 
 ### Testing Environment
-A testing environment is contained within this repository in the form of a Docker Compose file. This "all-in-one" Docker Compose creates the following services needed to define a fully self-contained client-server ACMEv2 testing lab:
+A testing environment is contained within this repository in the form of a Docker Compose file. This ["all-in-one" Docker Compose](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-docker-compose.yaml) creates the following services needed to build a fully self-contained, container-based, client-server ACMEv2 testing lab:
 
 - DNS server (bind9)
 - (2) ACME server implementations
   - Pebble
   - SmallStep
 - (2) ACME client implementations
-  - NGINX (configured as a simple TLS web server)
-  - Netshoot (generic network utility container)
+  - NGINX (configured as a simple TLS web server, with [Certbot](https://eff-certbot.readthedocs.io/en/stable/intro.html) ACME client)
+  - Netshoot (generic network utility container, with Certbot ACME client)
 
+The compose file builds two networks - one internal managed by the DNS server, and one external for some services to expose ports outside the environment (specifically NGINX).
+
+![acme-aio-lab-basic-lab-diagram](https://github.com/kevingstewart/acme-aio-lab/assets/16813250/d54a3083-b039-4298-ae00-dbc66ddd156e)
 
 
