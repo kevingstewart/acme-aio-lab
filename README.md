@@ -4,9 +4,9 @@ An ACMEv2 all-in-one testing lab that supports http-01, dns-01, and tls-alpn-01 
 ### Introduction
 ACME is an *automated* certificate renewal protocol that relies on "proof of ownership of **something**". While it is intended to be extensible, the standard ACMEv2 (version 2) implementation generally supports three forms of proof validation:
 
-* DNS (dns-01) - proof of ownership of a domain
-* HTTP (http-01) - proof of ownership of a domain and application asset
-* TLS (tls-alpn-01) - proof of ownership of a domain ...
+* [DNS (dns-01)](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-readme-dns-01.md) - proof of ownership of a domain
+* [HTTP (http-01)](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-readme-http-01.md) - proof of ownership of a domain and application asset
+* [TLS (tls-alpn-01)](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-readme-tls-alpn-01.md) - proof of ownership of a domain ...
 
 The above linked pages describe each proof validation in more detail, as a series of client-server challenge and response functions. And within these pages, specific testing scenarios are also covered. The purpose of this repository is to demonstrate the inner workings of the ACMEv2 protocol, within a fully self-contained, container-based, client-server ACMEv2 testing lab. No external resources are required (ex. DNS, Let's Encrypt, etc.) to operate this lab.
 
