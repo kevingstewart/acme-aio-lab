@@ -79,7 +79,7 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
    ```shell
    docker compose up -d
    ```
-2. Tail the NGINX container log until the logs settles.
+2. Tail the NGINX container log until the logs settles. Many things are happening under the hood.
    ```shell
    docker logs -f nginx
    ```
