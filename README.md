@@ -28,7 +28,7 @@ The compose file builds two networks - one "internal" managed by the DNS server,
 <img src="https://github.com/kevingstewart/acme-aio-lab/assets/16813250/5c3f5fe9-efff-4ad9-8ed3-22bc01917711" width="60%">
 
 The environment is configured as such:
-- The entire internal network sits on 10.10.0.0/16.
+- The entire internal network sits on a 10.10.0.0/16 subnet.
 - The DNS server listens on 10.10.0.53.
 - The Pebble ACME server listens on 10.10.20.100.
 - The Smallstep ACME server listens on 10.10.20.101.
