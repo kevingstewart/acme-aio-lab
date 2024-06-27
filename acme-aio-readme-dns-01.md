@@ -19,7 +19,7 @@ That is, the client must simply be able to control the DNS records for the reque
 - The provider will create the certificate and send the client a URL it can use to fetch it.
 - The client fetches the new certificate from this URL and should now remove the DNS TXT record.
 
-This is the general flow of ACMEv2 dns-01. Again, a more detailed and correct description is added below for reference. Once the client has access to the new certificate it may need to push that to the TLS service that actually needs it. The provisions for this step are specific to the TLS service.
+This is the general flow of ACMEv2 dns-01. Again, a more detailed and correct description is added below for reference. Once the client has access to the new certificate it may need to push that to the TLS service that actually needs it. The provisions for this step are specific to the TLS service. Also, in a real world scenario, the DNS is some Internet-based entity (ex. Cloudflare, Google), so the client has no control over this service other than to write records for its own zone. This is the essential premise of the dns-01 ACME proof validation.
 
 <br />
 
