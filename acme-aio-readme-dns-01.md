@@ -36,10 +36,10 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
   #!/bin/bash
 
   ## Only the top-level name of the domain is needed in the zone file
-  domaintl=$(echo $$CERTBOT_DOMAIN | sed 's/.f5labs.local//')
+  domaintl=$(echo $CERTBOT_DOMAIN | sed 's/.f5labs.local//')
 
   ## SSH echo the DNS TXT entry to the zone file
-  sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 "echo \"_acme-challenge.$${domaintl}  120 IN  TXT   ${CERTBOT_VALIDATION}\" >> /var/lib/bind/db.f5labs.local && rndc reload"
+  sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 "echo \"_acme-challenge.${domaintl}  120 IN  TXT   ${CERTBOT_VALIDATION}\" >> /var/lib/bind/db.f5labs.local && rndc reload"
 
   ## Pause for 5 seconds
   sleep 5
@@ -64,7 +64,7 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
   #!/bin/bash
 
   ## Move the renewed certificate to the correct location for the NGINX config.
-  cp -f /etc/letsencrypt/live/$${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
+  cp -f /etc/letsencrypt/live/${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
 
   ## Reload the NGINX config
   nginx -s reload
@@ -123,10 +123,366 @@ For the sake of demonstration, the NGINX server uses a set of hook scripts to "m
 -----
 ### Detailed ACMEv2 DNS-01 Protocol Exchange
 
-Data
+The ```-vvv``` option in the Certbot command will print out all of the protocol exchange messages. The following section elaborates on each of these messages.
 
 <details>
-  <summary>FOO</summary>
+  <summary>1. Directory service request</summary>
+  This is the only URL that is required to be known in advance, as the response will list the URLs for the other services. Within the directory listing there should minimally be resources for "NewAccount" (registration), "newNonce" (getting a new nonce), and "newOrder" (requesting certificate(s)). Optionally there may also be "revokeCert" (revoke an issued certificate) and "keyChange" (rotate registration key) services.
+  
+  ```
+  GET https://pebble.acmelabs.local:14000/dir
+
+  HTTP 200
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  {
+     "keyChange": "https://pebble.acmelabs.local:14000/rollover-account-key",
+     "meta": {
+        "externalAccountRequired": false,
+        "termsOfService": "data:text/plain,Do%20what%20thou%20wilt"
+     },
+     "newAccount": "https://pebble.acmelabs.local:14000/sign-me-up",
+     "newNonce": "https://pebble.acmelabs.local:14000/nonce-plz",
+     "newOrder": "https://pebble.acmelabs.local:14000/order-plz",
+     "revokeCert": "https://pebble.acmelabs.local:14000/revoke-cert"
+  }
+  ```
+</details>
+<details>
+  <summary>2. New nonce request (newNonce)</summary>
+  All subsequent requests must contain a Nonce value to protect against replay attacks. To get the initial nonce the client makes a HEAD request to the "newNonce" service URL, which is then returned in a "Replay-Nonce" header.
+  
+  ```
+  HEAD https://pebble.acmelabs.local:14000/nonce-plz
+
+  HTTP 200
+  Cache-Control: public, max-age=0, no-cache
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+  Replay-Nonce: by-pX5V5rET91YIwd0qzJw
+  ```
+</details>
+<details>
+  <summary>3. Registration request (newAccount)</summary>
+  Assuming the client has not yet registered with the ACME provider, it needs to first make a POST request to the "newAccount" service. The content of the request payload includes a **payload** block containing the *contact* email address and agreement to the provider's terms-of-service, a **protected** block that contains the previous nonce, service URL, and JSON web key attributes (algorithm, key type, modulus[n], and exponent[e]), and a **signature** block that is a digital signature using the client's private key. Note that in this and all following requests, the "protected" and "payload" blocks are base64-encoded. These are shown decoded here to better understand the protocol exchange. Also note that the provider should return a new nonce value in each response, which the client should use in the subsequent request.
+  
+  ```
+  POST https://pebble.acmelabs.local:14000/sign-me-up
+  {
+    "protected": {
+        "alg": "RS256", 
+        "jwk": {
+           "n": "yNZZe54dnQk_KggAbe-txbibe-...", 
+           "e": "AQAB", 
+           "kty": "RSA"
+        }, 
+        "nonce": "by-pX5V5rET91YIwd0qzJw", 
+        "url": "https://pebble.acmelabs.local:14000/sign-me-up"
+     },
+    "signature": "...",
+    "payload": {
+        "contact": [
+           "mailto:admin@f5labs.local"
+        ],
+        "termsOfServiceAgreed": true
+     }
+  }
+  
+  HTTP 201
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+  Location: https://pebble.acmelabs.local:14000/my-account/1
+  Replay-Nonce: VHJYFJtDzXaxnu2Ohm4O7w
+  {
+     "status": "valid",
+     "contact": [
+        "mailto:admin@f5labs.local"
+     ],
+     "orders": "https://pebble.acmelabs.local:14000/list-orderz/1",
+     "key": {
+        "kty": "RSA",
+        "n": "yNZZe54dnQk_KggAbe-txbibe-...",
+        "e": "AQAB"
+     }
+  }
+  ```
+</details>
+<details>
+  <summary>4. Certificate request (newOrder)</summary>
+  The client is now request to request a new certificate. To do that it makes a POST request to the "newOrder" service URL, and in that request it supplies a similar (base64-encoded) **protected** block, a (base64-encoded) **payload** block that contains an "identifiers" array of domain names (the certificate domains requested), and **signature** block. The provider will return two important URLs:
+  
+  - authorizations: an array listing the URL(s) to query to get challenge information
+  - finalize: the URL that will be used once the challenges are successful
+  
+  ```
+  POST https://pebble.acmelabs.local:14000/order-plz
+  {
+  "protected": {
+      "alg": "RS256", 
+      "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
+      "nonce": "VHJYFJtDzXaxnu2Ohm4O7w", 
+      "url": "https://pebble.acmelabs.local:14000/order-plz"
+   },
+  "signature": "...",
+  "payload": {
+      "identifiers": [
+         {
+            "type": "dns",
+            "value": "www.f5labs.local"
+         }
+      ]
+   }
+}
+
+HTTP 201
+Cache-Control: public, max-age=0, no-cache
+Content-Type: application/json; charset=utf-8
+Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+Location: https://pebble.acmelabs.local:14000/my-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
+Replay-Nonce: cKc9heXQdLmojUINiJOMoA
+{
+   "status": "pending",
+   "expires": "2024-06-28T21:07:14Z",
+   "identifiers": [
+      {
+         "type": "dns",
+         "value": "www.f5labs.local"
+      }
+   ],
+   "finalize": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs",
+   "authorizations": [
+      "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
+   ]
+}
+  ```
+</details>
+<details>
+  <summary>5. Authorizations Request</summary>
+  The client sends its request with **protected** block, an empty **payload** block, and the **signature** block. The authorizations request should return an array of "challenges" - the set of proof validation functions (ex. http-01, dns-01, tls-alpn-01) and corresponding ephemeral validation tokens. 
+  
+  ```
+  POST https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ
+  {
+    "protected": {
+        "alg": "RS256", 
+        "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
+        "nonce": "cKc9heXQdLmojUINiJOMoA", 
+        "url": "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
+     },
+    "signature": "...",
+    "payload": ""
+  }
+  
+  HTTP 200
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+  Replay-Nonce: 3kVnFRJYPyLZnLEAilf8AA
+  {
+     "status": "pending",
+     "identifier": {
+        "type": "dns",
+        "value": "www.f5labs.local"
+     },
+     "challenges": [
+        {
+           "type": "http-01",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/cHHW1Ao2mu_ckCcwB6cSFlLxdpPMl4ZW2KGgfvroBRc",
+           "token": "4GDRx8S77JRXFFM4KikAEWeSc1R5AaELV4OzXWxap24",
+           "status": "pending"
+        },
+        {
+           "type": "dns-01",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU",
+           "token": "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg",
+           "status": "pending"
+        },
+        {
+           "type": "tls-alpn-01",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/yhS1mUTHinVjQsb_rXVlj1aDLXrfCm5r0bnRfApIT9U",
+           "token": "Uuoyh7pIMyEEEO-KBFLdcDmeZrsdjbJhJ8DA0HIJOLM",
+           "status": "pending"
+        }
+     ],
+     "expires": "2024-06-27T22:07:14Z"
+  }
+  ```
+</details>
+<details>
+  <summary>6. Stage the DNS TXT record</summary>
+  The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is to insert a DNS TXT record for **this** domain (zone). Proof validation is established by virtue of the fact that the client only owns/manages DNS records for this resource in a public DNS service. For the sake of completeness, however, the lab's DNS "pre hook" script is included here. It simply executes Bash commands through an SSH connection to echo the DNS record into the zone file. In this specific instance, the validation value is *iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg*, the dns-01 token value from the authorizations response.
+  
+  ```shell
+  #!/bin/bash
+
+  ## Only the top-level name of the domain is needed in the zone file
+  domaintl=$(echo $CERTBOT_DOMAIN | sed 's/.f5labs.local//')
+
+  ## SSH echo the DNS TXT entry to the zone file
+  sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 "echo \"_acme-challenge.${domaintl}  120 IN  TXT   ${CERTBOT_VALIDATION}\" >> /var/lib/bind/db.f5labs.local && rndc reload"
+
+  ## Pause for 5 seconds
+  sleep 5
+  ```
+</details>
+<details>
+  <summary>7. Let the provider know the challenge is ready</summary>
+  Notice also the **url** value in the dns-01 block of the authorizations response. This URL is how the client will indicate its preference to use dns-01 proof validation. The client needs to make a POST request to this URL, pass in **protected** block, empty **payload** block, and the **signature** block. The provider will return the same dns-01 authorizations block with a "pending" status, indicating it will commence validation.
+  
+  ```
+  POST https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU
+  {
+    "protected": {
+        "alg": "RS256", 
+        "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
+        "nonce": "3kVnFRJYPyLZnLEAilf8AA", 
+        "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU"
+     },
+    "signature": "...",
+    "payload": "{}"
+  }
+  
+  HTTP 200
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index", <https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ>;rel="up"
+  Replay-Nonce: ve5MPLzO1b1JrZ_xtH7Y_g
+  {
+     "type": "dns-01",
+     "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU",
+     "token": "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg",
+     "status": "pending"
+  }
+  ```
+</details>
+<details>
+  <summary>8. Poll the provider for validation status</summary>
+  A busy ACME provider may take some time to get to this validation, so the client should continue to poll the provider for status. To do that it makes a POST request to the same authorizations URL, passing in **protected** block, empty **payload** block, and the **signature** block. Once the provider has had a chance to validate the challenge (query the DNS TXT record) it will return a response to the client's poll indicating a "valid" status.
+  
+  ```
+  POST https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ
+  {
+    "protected": {
+        "alg": "RS256", 
+        "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
+        "nonce": "ve5MPLzO1b1JrZ_xtH7Y_g", 
+        "url": "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
+     },
+    "signature": "...",
+    "payload": ""
+  }
+  
+  HTTP 200
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+  Replay-Nonce: pTzDsi6NbEs00NaH54jCSQ
+  {
+     "status": "valid",
+     "identifier": {
+        "type": "dns",
+        "value": "www.f5labs.local"
+     },
+     "challenges": [
+        {
+           "type": "dns-01",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU",
+           "token": "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg",
+           "status": "valid",
+           "validated": "2024-06-27T21:07:20Z"
+        }
+     ],
+     "expires": "2024-06-27T22:07:20Z"
+  }
+  ```
+</details>
+<details>
+  <summary>9. Clean up the DNS TXT record</summary>
+  The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is simply to remove the previous DNS TXT record for **this** domain (zone). For the sake of completeness, however, the lab's DNS "post hook" script is included here. It simply executes Bash commands through an SSH connection to remove the DNS record from the zone file.
+  
+  ```
+  #!/bin/bash
+
+  ## SSH clean up the ephemeral zone entry
+  sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 'sed -i '/^_acme-challenge.*/d' /var/lib/bind/db.f5labs.local && rndc reload'
+  ```
+</details>
+<details>
+  <summary>10. Send a Certificate Signing Request</summary>
+  As previously noted, the "finalize" URL that came from the newOrder request is to be used once the proof validation is successful. The client needs to make a POST request this URL, sending the **protected** block, a **payload** block containing the certificate signing request (CSR), and the **signature** block. At this point that provider may return one of two things:
+
+  - A status of "pending" in which case the client needs to "poll" the order URL in the response "Location" header
+  - A status of "valid" in which case it also provides a URL to fetch the new certificate
+
+In the below we show the former "pending" state.
+  
+  ```
+  POST https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
+  {
+    "protected": {
+        "alg": "RS256", 
+        "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
+        "nonce": "pTzDsi6NbEs00NaH54jCSQ", 
+        "url": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs"
+     },
+    "signature": "...",
+    "payload": {
+        "csr": "MIHpMIGQAgEA..."
+     }
+  }
+  
+  HTTP 200
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+  Location: https://pebble.acmelabs.local:14000/my-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
+  Replay-Nonce: Kudlh1GjiYtcD5GhUw2C9Q
+  {
+     "status": "processing",
+     "expires": "2024-06-28T21:07:14Z",
+     "identifiers": [
+        {
+           "type": "dns",
+           "value": "www.f5labs.local"
+        }
+     ],
+     "finalize": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs",
+     "authorizations": [
+        "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
+     ]
+  }
+  ```
+</details>
+<details>
+  <summary>1. FOO</summary>
+  
+  ```
+  DATA
+  ```
+</details>
+<details>
+  <summary>1. FOO</summary>
+  
+  ```
+  DATA
+  ```
+</details>
+<details>
+  <summary>1. FOO</summary>
+  
+  ```
+  DATA
+  ```
+</details>
+<details>
+  <summary>1. FOO</summary>
+  
+  ```
+  DATA
+  ```
+</details>
+<details>
+  <summary>1. FOO</summary>
   
   ```
   DATA
