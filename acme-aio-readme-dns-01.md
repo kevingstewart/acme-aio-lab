@@ -9,8 +9,8 @@ That is, the client must simply be able to control the DNS records for the reque
 
 **Simplified ACME DNS-01 Protocol Exchange**
 - An ACME client sends a request to an ACME provider to "order" a new certificate (ex. www.example.com).
-- The ACME provider sends back a list of supported proof validation options, typically http-01, dns-01, and tls-alpn-01, and the client indicates that it wants to use dns-01.
-- The provider then sends a validation token (ex. 4FirTtbveHPsRiDRxAVOgvYsaCSOzPGy)
+- The ACME provider sends back a list of supported proof validation options, typically **http-01**, **dns-01**, and **tls-alpn-01**, and the client indicates that it wants to use **dns-01**.
+- The provider then sends a validation token (ex. _4FirTtbveHPsRiDRxAVOgvYsaCSOzPGy_)
 - The client must now create a DNS TXT record, named "_acme-challenge.\<domain\>" and add the validation token as the TXT record value. The client then tells the provider that it's ready. Ex.
   ```
   _acme-challenge.www.example.com    120  IN    TXT    4FirTtbveHPsRiDRxAVOgvYsaCSOzPGy
@@ -127,7 +127,9 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
 
 <details>
   <summary>1. Directory service request</summary>
+  <br />
   This is the only URL that is required to be known in advance, as the response will list the URLs for the other services. Within the directory listing there should minimally be resources for "NewAccount" (registration), "newNonce" (getting a new nonce), and "newOrder" (requesting certificate(s)). Optionally there may also be "revokeCert" (revoke an issued certificate) and "keyChange" (rotate registration key) services.
+  <br />
   
   ```
   GET https://pebble.acmelabs.local:14000/dir
@@ -150,7 +152,9 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
 </details>
 <details>
   <summary>2. New nonce request (newNonce)</summary>
+  <br />
   All subsequent requests must contain a Nonce value to protect against replay attacks. To get the initial nonce the client makes a HEAD request to the "newNonce" service URL, which is then returned in a "Replay-Nonce" header.
+  <br />
   
   ```
   HEAD https://pebble.acmelabs.local:14000/nonce-plz
@@ -163,7 +167,9 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
 </details>
 <details>
   <summary>3. Registration request (newAccount)</summary>
+  <br />
   Assuming the client has not yet registered with the ACME provider, it needs to first make a POST request to the "newAccount" service. The content of the request payload includes a **payload** block containing the *contact* email address and agreement to the provider's terms-of-service, a **protected** block that contains the previous nonce, service URL, and JSON web key attributes (algorithm, key type, modulus[n], and exponent[e]), and a **signature** block that is a digital signature using the client's private key. Note that in this and all following requests, the "protected" and "payload" blocks are base64-encoded. These are shown decoded here to better understand the protocol exchange. Also note that the provider should return a new nonce value in each response, which the client should use in the subsequent request.
+  <br />
   
   ```
   POST https://pebble.acmelabs.local:14000/sign-me-up
@@ -209,7 +215,9 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
 </details>
 <details>
   <summary>4. Certificate request (newOrder)</summary>
+  <br />
   The client is now request to request a new certificate. To do that it makes a POST request to the "newOrder" service URL, and in that request it supplies a similar (base64-encoded) **protected** block, a (base64-encoded) **payload** block that contains an "identifiers" array of domain names (the certificate domains requested), and **signature** block. The provider will return two important URLs:
+  <br />
   
   - authorizations: an array listing the URL(s) to query to get challenge information
   - finalize: the URL that will be used once the challenges are successful
@@ -258,7 +266,9 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 </details>
 <details>
   <summary>5. Authorizations Request</summary>
+  <br />
   The client sends its request with **protected** block, an empty **payload** block, and the **signature** block. The authorizations request should return an array of "challenges" - the set of proof validation functions (ex. http-01, dns-01, tls-alpn-01) and corresponding ephemeral validation tokens. 
+  <br />
   
   ```
   POST https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ
@@ -310,7 +320,9 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 </details>
 <details>
   <summary>6. Stage the DNS TXT record</summary>
+  <br />
   The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is to insert a DNS TXT record for **this** domain (zone). Proof validation is established by virtue of the fact that the client only owns/manages DNS records for this resource in a public DNS service. For the sake of completeness, however, the lab's DNS "pre hook" script is included here. It simply executes Bash commands through an SSH connection to echo the DNS record into the zone file. In this specific instance, the validation value is *iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg*, the dns-01 token value from the authorizations response.
+  <br />
   
   ```shell
   #!/bin/bash
@@ -327,7 +339,9 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 </details>
 <details>
   <summary>7. Let the provider know the challenge is ready</summary>
+  <br />
   Notice also the **url** value in the dns-01 block of the authorizations response. This URL is how the client will indicate its preference to use dns-01 proof validation. The client needs to make a POST request to this URL, pass in **protected** block, empty **payload** block, and the **signature** block. The provider will return the same dns-01 authorizations block with a "pending" status, indicating it will commence validation.
+  <br />
   
   ```
   POST https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU
@@ -357,7 +371,9 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 </details>
 <details>
   <summary>8. Poll the provider for validation status</summary>
+  <br />
   A busy ACME provider may take some time to get to this validation, so the client should continue to poll the provider for status. To do that it makes a POST request to the same authorizations URL, passing in **protected** block, empty **payload** block, and the **signature** block. Once the provider has had a chance to validate the challenge (query the DNS TXT record) it will return a response to the client's poll indicating a "valid" status.
+  <br />
   
   ```
   POST https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ
@@ -398,7 +414,9 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 </details>
 <details>
   <summary>9. Clean up the DNS TXT record</summary>
+  <br />
   The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is simply to remove the previous DNS TXT record for **this** domain (zone). For the sake of completeness, however, the lab's DNS "post hook" script is included here. It simply executes Bash commands through an SSH connection to remove the DNS record from the zone file.
+  <br />
   
   ```
   #!/bin/bash
@@ -409,7 +427,9 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 </details>
 <details>
   <summary>10. Send a Certificate Signing Request</summary>
+  <br />
   As previously noted, the "finalize" URL that came from the newOrder request is to be used once the proof validation is successful. The client needs to make a POST request this URL, sending the **protected** block, a **payload** block containing the certificate signing request (CSR), and the **signature** block. At this point that provider may return one of two things:
+  <br />
 
   - A status of "pending" in which case the client needs to "poll" the order URL in the response "Location" header
   - A status of "valid" in which case it also provides a URL to fetch the new certificate
@@ -455,6 +475,8 @@ In the below we show the former "pending" state.
 </details>
 <details>
   <summary>1. FOO</summary>
+  <br />
+  <br />
   
   ```
   DATA
