@@ -26,14 +26,14 @@ This is the general flow of ACMEv2 http-01. Again, a more detailed and correct d
 ### Testing ACMEv2 HTTP-01 in the All-in-One Lab Environment
 The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of the necessary components to support a fully-contained, container-based environment. No external services are required. For HTTP-01 testing specifically, you need an ACME client (NGINX server), an ACME provider (Pebble or Smallstep), and a DNS server (Bind). During the proof phase of the protocol exchange, the client must be able to create an HTTP port 80 listener configuration, and subsequently remove it. 
 
-Note that in this lab the Cerbot ACME client will use the **standalone** option, which will create the HTTP port 80 listener internally. As the Certbot agent is running in the same container as the NGINX TLS service, the DNS IP will be the same. Once the Certbot client has the new certificate, it just needs to push that to NGINX and reload the TLS service configuration. This is done with a simple "post hook" Bash script:
+Note that in this lab the Cerbot ACME client will use the **standalone** option, which will create the HTTP port 80 listener internally. As the Certbot agent is running in the same container as the NGINX TLS service, the DNS IP will be the same. Once the Certbot client has the new certificate, it just needs to push that to NGINX and reload the TLS service configuration. This is done with a simple "deploy hook" Bash script:
 
 <details>
-  <summary>HTTP-01 "post hook" script to move the certificate into place and reload the TLS server</summary>
+  <summary>HTTP-01 "deploy hook" script to move the certificate into place and reload the TLS server</summary>
   
   ```shell
   #!/bin/bash
-  cp -f /etc/letsencrypt/live/$${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
+  cp -f /etc/letsencrypt/live/${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
   nginx -s reload
   ```
 </details>
@@ -58,15 +58,15 @@ Note that in this lab the Cerbot ACME client will use the **standalone** option,
    ```shell
    docker exec -it nginx /bin/bash
    ```
-5. From the NGINX container, execute an ACME certificate renewal request to one of the ACME providers for a new certificate. The -vvv option on the command line will dump the entire ACME protocol exchange for your review. The below example uses the Pebble ACME server for the www.f5labs.local domain and specifies each of the hook scripts.
+5. From the NGINX container, execute an ACME certificate renewal request to one of the ACME providers for a new certificate. The -vvv option on the command line will dump the entire ACME protocol exchange for your review. The below example uses the Pebble ACME server for the www.f5labs.local domain and specifies the deploy hook script.
    ```shell
    server=https://pebble.acmelabs.local:14000/dir
    domain=www.f5labs.local
-   certbot certonly --manual --no-eff-email --email admin@f5labs.local \
-   -vvv --no-verify-ssl --agree-tos --preferred-challenges=dns --server ${server} \
+   certbot certonly --standalone \
+   --no-eff-email --email admin@f5labs.local \
+   -vvv --no-verify-ssl --agree-tos \
+   --server ${server} \
    --domains ${domain} \
-   --manual-auth-hook "/acme-hook-dns-pre.sh" \
-   --manual-cleanup-hook "/acme-hook-dns-post.sh" \
    --deploy-hook "/acme-hook-deploy.sh"
    ```
 6. From the NGINX container, view the properties of the renewed certificate.
@@ -126,7 +126,7 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
   HTTP 200
   Cache-Control: public, max-age=0, no-cache
   Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
-  Replay-Nonce: by-pX5V5rET91YIwd0qzJw
+  Replay-Nonce: _1lC0k2yni8FlVMY0bnaKA
   ```
 </details>
 <details>
@@ -145,7 +145,7 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
            "e": "AQAB", 
            "kty": "RSA"
         }, 
-        "nonce": "by-pX5V5rET91YIwd0qzJw", 
+        "nonce": "_1lC0k2yni8FlVMY0bnaKA", 
         "url": "https://pebble.acmelabs.local:14000/sign-me-up"
      },
     "signature": "...",
@@ -162,7 +162,7 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
   Content-Type: application/json; charset=utf-8
   Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
   Location: https://pebble.acmelabs.local:14000/my-account/1
-  Replay-Nonce: VHJYFJtDzXaxnu2Ohm4O7w
+  Replay-Nonce: _1lC0k2yni8FlVMY0bnaKA
   {
      "status": "valid",
      "contact": [
@@ -189,43 +189,42 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
   ```
   POST https://pebble.acmelabs.local:14000/order-plz
   {
-  "protected": {
-      "alg": "RS256", 
-      "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-      "nonce": "VHJYFJtDzXaxnu2Ohm4O7w", 
-      "url": "https://pebble.acmelabs.local:14000/order-plz"
-   },
-  "signature": "...",
-  "payload": {
-      "identifiers": [
-         {
-            "type": "dns",
-            "value": "www.f5labs.local"
-         }
-      ]
-   }
-}
--------------------------------------------
-HTTP 201
-Cache-Control: public, max-age=0, no-cache
-Content-Type: application/json; charset=utf-8
-Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
-Location: https://pebble.acmelabs.local:14000/my-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
-Replay-Nonce: cKc9heXQdLmojUINiJOMoA
-{
-   "status": "pending",
-   "expires": "2024-06-28T21:07:14Z",
-   "identifiers": [
+    "protected": {
+        "alg": "RS256", 
+        "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
+        "nonce": "_1lC0k2yni8FlVMY0bnaKA", 
+        "url": "https://pebble.acmelabs.local:14000/order-plz"
+    },
+    "signature": "knkitI-EQ0V4SgDCjlFTCraBjy...",
+    "payload": "{
+    "identifiers": [
       {
-         "type": "dns",
-         "value": "www.f5labs.local"
+        "type": "dns",
+        "value": "www.f5labs.local"
       }
-   ],
-   "finalize": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs",
-   "authorizations": [
-      "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
-   ]
-}
+    ]
+  }
+  -------------------------------------------
+  HTTP 201
+  Cache-Control: public, max-age=0, no-cache
+  Content-Type: application/json; charset=utf-8
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
+  Location: https://pebble.acmelabs.local:14000/my-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY
+  Replay-Nonce: tG2LvEiAWlqayLL1Xd5p0A
+  {
+     "status": "pending",
+     "expires": "2024-07-04T12:23:37Z",
+     "identifiers": [
+        {
+           "type": "dns",
+           "value": "www.f5labs.local"
+        }
+     ],
+     "finalize": "https://pebble.acmelabs.local:14000/finalize-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY",
+     "authorizations": [
+        "https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0"
+     ]
+  }
   ```
 </details>
 <details>
@@ -235,15 +234,15 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
   <br />
   
   ```
-  POST https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ
+  POST https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0
   {
     "protected": {
         "alg": "RS256", 
         "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-        "nonce": "cKc9heXQdLmojUINiJOMoA", 
-        "url": "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
-     },
-    "signature": "...",
+        "nonce": "tG2LvEiAWlqayLL1Xd5p0A", 
+        "url": "https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0"
+    },
+    "signature": "OLFcTqqJjkNiPRMES5romppnuA...",
     "payload": ""
   }
   -------------------------------------------
@@ -251,7 +250,7 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
   Cache-Control: public, max-age=0, no-cache
   Content-Type: application/json; charset=utf-8
   Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
-  Replay-Nonce: 3kVnFRJYPyLZnLEAilf8AA
+  Replay-Nonce: LYvJr3PloWaEhjxpXwtJ2A
   {
      "status": "pending",
      "identifier": {
@@ -260,75 +259,67 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
      },
      "challenges": [
         {
-           "type": "http-01",
-           "url": "https://pebble.acmelabs.local:14000/chalZ/cHHW1Ao2mu_ckCcwB6cSFlLxdpPMl4ZW2KGgfvroBRc",
-           "token": "4GDRx8S77JRXFFM4KikAEWeSc1R5AaELV4OzXWxap24",
-           "status": "pending"
-        },
-        {
            "type": "dns-01",
-           "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU",
-           "token": "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/xuwc6c_dIoeN7SzdV6c4xB-i1B3ia3can6U3H55c8r8",
+           "token": "H75UagVrBg9FK6f2rV2zBJiF2GX5jJa5tgJDaZb-MZo",
            "status": "pending"
         },
         {
            "type": "tls-alpn-01",
-           "url": "https://pebble.acmelabs.local:14000/chalZ/yhS1mUTHinVjQsb_rXVlj1aDLXrfCm5r0bnRfApIT9U",
-           "token": "Uuoyh7pIMyEEEO-KBFLdcDmeZrsdjbJhJ8DA0HIJOLM",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/FlVXCjrD43-pnYWUBsENWP8dI7Bab24GIiK0CE9tnq4",
+           "token": "Iz3lA6KEaBqjCDfSE2ZtcTXsDxjcx2-ZlhC4aclfqhw",
+           "status": "pending"
+        },
+        {
+           "type": "http-01",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/j2JwAI_xnIjY3uez8MzXprPXcb4ghA94oC2F4Ih9mf4",
+           "token": "LGbvLqb26AIdrnBnjDGfnu1ACE2zT_JUOobv6dCCfxY",
            "status": "pending"
         }
      ],
-     "expires": "2024-06-27T22:07:14Z"
+     "expires": "2024-07-03T13:23:37Z"
   }
   ```
 </details>
 <details>
-  <summary>6. Client Function: Stage the DNS TXT record</summary>
+  <summary>6. Client Function: Stage the HTTP port 80 listener and token</summary>
   <br />
-  The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is to insert a DNS TXT record for this domain (zone). Proof validation is established by virtue of the fact that the client only owns/manages DNS records for this resource in a public DNS service. For the sake of completeness, however, the lab's DNS "pre hook" script is included here. It simply executes Bash commands through an SSH connection to echo the DNS record into the zone file. In this specific instance, the validation value is "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg", the dns-01 token value from the authorizations response.
-  <br />
-  
-  ```shell
-  #!/bin/bash
+  The implementation of this step is dependent on both the client's capabilities and the target TLS resource. With the http-01 proof validation, the provider is going to query public DNS for the IP of the requested domain and then make an HTTP port 80 request to that domain seeking a response on the "/.well-known/acme-challenge/[token]" URL, expecting the token to be in the response. This proves to the provider that the requestor owns both the DNS record and the application asset. Using the --standalone option on the Certbot client enables it to stand up an ephemeral HTTP port 80 listener directly (without needing to manipulate the NGINX TLS server). This works because the Certbot client is running on the same server address as the NGINX instance. In a real-world scenario, however, it is often useful to manipulate the TLS server's configuration to have it listen on HTTP port 80 and respond with the validation token. This can be handled in several ways:
 
-  ## Only the top-level name of the domain is needed in the zone file
-  domaintl=$(echo $CERTBOT_DOMAIN | sed 's/.f5labs.local//')
+- Pre-stage the /.well-known/acme-challenge/ HTTP port 80 listener in the web server's configuration and then have the ACME client drop the token into that "folder" during the proof validation.
+- Use a script to create a temporary HTTP port 80 listener config on the web server and insert the validation token.
 
-  ## SSH echo the DNS TXT entry to the zone file
-  sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 "echo \"_acme-challenge.${domaintl}  120 IN  TXT   ${CERTBOT_VALIDATION}\" >> /var/lib/bind/db.f5labs.local && rndc reload"
-
-  ## Pause for 5 seconds
-  sleep 5
-  ```
+Again, the best approach depends on the capabilities of the ACME client and target TLS resource. For example, the first option is technically easier and doesn't typically require a configuration reload, however would leave an HTTP port 80 listener open. The second option would require a configuration reload, but with a server like NGINX this isn't usually a problem.
+  <br /><br />
 </details>
 <details>
   <summary>7. Let the provider know the challenge is ready</summary>
   <br />
-  Notice also the "url" value in the dns-01 block of the authorizations response. This URL is how the client will indicate its preference to use dns-01 proof validation. The client needs to make a POST request to this URL, pass in "protected" block, empty "payload" block, and the "signature" block. The provider will return the same dns-01 authorizations block with a "pending" status, indicating it will commence validation.
+  Notice also the "url" value in the http-01 block of the authorizations response. This URL is how the client will indicate its preference to use http-01 proof validation. The client needs to make a POST request to this URL, pass in "protected" block, empty "payload" block, and the "signature" block. The provider will return the same http-01 authorizations block with a "pending" status, indicating it will commence validation.
   <br />
   
   ```
-  POST https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU
+  POST https://pebble.acmelabs.local:14000/chalZ/j2JwAI_xnIjY3uez8MzXprPXcb4ghA94oC2F4Ih9mf4
   {
     "protected": {
         "alg": "RS256", 
         "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-        "nonce": "3kVnFRJYPyLZnLEAilf8AA", 
-        "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU"
-     },
-    "signature": "...",
+        "nonce": "LYvJr3PloWaEhjxpXwtJ2A", 
+        "url": "https://pebble.acmelabs.local:14000/chalZ/j2JwAI_xnIjY3uez8MzXprPXcb4ghA94oC2F4Ih9mf4"
+    },
+    "signature": "Oh6Y0dRxESsNNZd4byOgdWt9lt...",
     "payload": "{}"
   }
   -------------------------------------------
   HTTP 200
   Cache-Control: public, max-age=0, no-cache
   Content-Type: application/json; charset=utf-8
-  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index", <https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ>;rel="up"
-  Replay-Nonce: ve5MPLzO1b1JrZ_xtH7Y_g
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index", <https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0>;rel="up"
+  Replay-Nonce: 5WLGGTY2Q62HtrUbkLYGmg
   {
-     "type": "dns-01",
-     "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU",
-     "token": "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg",
+     "type": "http-01",
+     "url": "https://pebble.acmelabs.local:14000/chalZ/j2JwAI_xnIjY3uez8MzXprPXcb4ghA94oC2F4Ih9mf4",
+     "token": "LGbvLqb26AIdrnBnjDGfnu1ACE2zT_JUOobv6dCCfxY",
      "status": "pending"
   }
   ```
@@ -340,15 +331,15 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
   <br />
   
   ```
-  POST https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ
+  POST https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0
   {
     "protected": {
         "alg": "RS256", 
         "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-        "nonce": "ve5MPLzO1b1JrZ_xtH7Y_g", 
-        "url": "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
-     },
-    "signature": "...",
+        "nonce": "5WLGGTY2Q62HtrUbkLYGmg", 
+        "url": "https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0"
+    },
+    "signature": "ED0Fz2woEHf2-rod3h4g5e82-1...",
     "payload": ""
   }
   -------------------------------------------
@@ -356,7 +347,7 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
   Cache-Control: public, max-age=0, no-cache
   Content-Type: application/json; charset=utf-8
   Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
-  Replay-Nonce: pTzDsi6NbEs00NaH54jCSQ
+  Replay-Nonce: 2M9cK4dU0FY4viOVSjmV8A
   {
      "status": "valid",
      "identifier": {
@@ -365,29 +356,22 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
      },
      "challenges": [
         {
-           "type": "dns-01",
-           "url": "https://pebble.acmelabs.local:14000/chalZ/VQM9vxUsiakiKOo6R1wQg4_zS9-UJqMAnf4MPGiuNDU",
-           "token": "iBNF15sfcOKMa0i1SNVVJFGBya85VFLLxO15X1aXFKg",
+           "type": "http-01",
+           "url": "https://pebble.acmelabs.local:14000/chalZ/j2JwAI_xnIjY3uez8MzXprPXcb4ghA94oC2F4Ih9mf4",
+           "token": "LGbvLqb26AIdrnBnjDGfnu1ACE2zT_JUOobv6dCCfxY",
            "status": "valid",
-           "validated": "2024-06-27T21:07:20Z"
+           "validated": "2024-07-03T12:23:37Z"
         }
      ],
-     "expires": "2024-06-27T22:07:20Z"
+     "expires": "2024-07-03T13:23:37Z"
   }
   ```
 </details>
 <details>
-  <summary>9. Client Function: Clean up the DNS TXT record</summary>
+  <summary>9. Client Function: Clean up the HTTP port 80 listener and token</summary>
   <br />
-  The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is simply to remove the previous DNS TXT record for this domain (zone). For the sake of completeness, however, the lab's DNS "post hook" script is included here. It simply executes Bash commands through an SSH connection to remove the DNS record from the zone file.
-  <br />
-  
-  ```
-  #!/bin/bash
-
-  ## SSH clean up the ephemeral zone entry
-  sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 'sed -i '/^_acme-challenge.*/d' /var/lib/bind/db.f5labs.local && rndc reload'
-  ```
+  The implementation of this step is dependent on both the client's capabilities and the target TLS resource. For http-01, this simply means either removing the ephemeral validation token from the HTTP port 80 listener, or removing the HTTP port 80 listener completely.
+  <br /><br >
 </details>
 <details>
   <summary>10. Send a Certificate Signing Request</summary>
@@ -401,17 +385,17 @@ Replay-Nonce: cKc9heXQdLmojUINiJOMoA
 In the below we show the former "pending" state.
   
   ```
-  POST https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
+  POST https://pebble.acmelabs.local:14000/finalize-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY
   {
     "protected": {
         "alg": "RS256", 
         "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-        "nonce": "pTzDsi6NbEs00NaH54jCSQ", 
-        "url": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs"
-     },
-    "signature": "...",
+        "nonce": "2M9cK4dU0FY4viOVSjmV8A", 
+        "url": "https://pebble.acmelabs.local:14000/finalize-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY"
+    },
+    "signature": "F9Oy8VYG4NZyE9P5JgV8Q8s1fi...",
     "payload": {
-        "csr": "MIHpMIGQAgEA..."
+        "csr": "MIHqMIGQAgEAMAAwWTATBgcqhk..."
      }
   }
   -------------------------------------------
@@ -419,20 +403,20 @@ In the below we show the former "pending" state.
   Cache-Control: public, max-age=0, no-cache
   Content-Type: application/json; charset=utf-8
   Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
-  Location: https://pebble.acmelabs.local:14000/my-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
-  Replay-Nonce: Kudlh1GjiYtcD5GhUw2C9Q
+  Location: https://pebble.acmelabs.local:14000/my-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY
+  Replay-Nonce: m9uZCc-gDt_QsAuDlYt66w
   {
      "status": "processing",
-     "expires": "2024-06-28T21:07:14Z",
+     "expires": "2024-07-04T12:23:37Z",
      "identifiers": [
         {
            "type": "dns",
            "value": "www.f5labs.local"
         }
      ],
-     "finalize": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs",
+     "finalize": "https://pebble.acmelabs.local:14000/finalize-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY",
      "authorizations": [
-        "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
+        "https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0"
      ]
   }
   ```
@@ -444,15 +428,15 @@ In the below we show the former "pending" state.
   <br />
   
   ```
-  POST https://pebble.acmelabs.local:14000/my-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs
+  POST https://pebble.acmelabs.local:14000/my-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY
   {
     "protected": {
         "alg": "RS256", 
         "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-        "nonce": "Kudlh1GjiYtcD5GhUw2C9Q", 
-        "url": "https://pebble.acmelabs.local:14000/my-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs"
-     },
-    "signature": "...",
+        "nonce": "m9uZCc-gDt_QsAuDlYt66w", 
+        "url": "https://pebble.acmelabs.local:14000/my-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY"
+    },
+    "signature": "PfZp4Erw9BsHOeRJsxeHyz3Rox...",
     "payload": ""
   }
   -------------------------------------------
@@ -460,21 +444,21 @@ In the below we show the former "pending" state.
   Cache-Control: public, max-age=0, no-cache
   Content-Type: application/json; charset=utf-8
   Link: <https://pebble.acmelabs.local:14000/dir>;rel="index"
-  Replay-Nonce: RTV4jEVkRYzvW3hTKvF9gg
+  Replay-Nonce: LS4vJrt_AjcplOyPeHxTJw
   {
      "status": "valid",
-     "expires": "2024-06-28T21:07:14Z",
+     "expires": "2024-07-04T12:23:37Z",
      "identifiers": [
         {
            "type": "dns",
            "value": "www.f5labs.local"
         }
      ],
-     "finalize": "https://pebble.acmelabs.local:14000/finalize-order/g18GvKI-u7f4XaM8GsawoZbx0D1wZrNqNO0zBgnbAfs",
+     "finalize": "https://pebble.acmelabs.local:14000/finalize-order/89IpX7w9L0vFmE-82kmUxE5X1r-8_lIORXOh2kNxrUY",
      "authorizations": [
-        "https://pebble.acmelabs.local:14000/authZ/ttC1OkA8mAP9KgXMVjSK3CgdIGv-NWTuIQpw5P2AWYQ"
+        "https://pebble.acmelabs.local:14000/authZ/ypVmnrbvWsEjONv0ygSAPCkh7LaLSq0O98DqohHr0Y0"
      ],
-     "certificate": "https://pebble.acmelabs.local:14000/certZ/14866f1c6cce8a10"
+     "certificate": "https://pebble.acmelabs.local:14000/certZ/730eee6d49373bab"
   }
   ```
 </details>
@@ -485,34 +469,34 @@ In the below we show the former "pending" state.
   <br />
   
   ```
-  POST https://pebble.acmelabs.local:14000/certZ/14866f1c6cce8a10
+  POST https://pebble.acmelabs.local:14000/certZ/730eee6d49373bab
   {
     "protected": {
         "alg": "RS256", 
         "kid": "https://pebble.acmelabs.local:14000/my-account/1", 
-        "nonce": "RTV4jEVkRYzvW3hTKvF9gg", 
-        "url": "https://pebble.acmelabs.local:14000/certZ/14866f1c6cce8a10"
-     },
-    "signature": "...",
+        "nonce": "LS4vJrt_AjcplOyPeHxTJw", 
+        "url": "https://pebble.acmelabs.local:14000/certZ/730eee6d49373bab"
+    },
+    "signature": "PyZmOf9udEJYftlgVIX-hQ2VKL...",
     "payload": ""
   }
-  
+  -------------------------------------------
   HTTP 200
   Cache-Control: public, max-age=0, no-cache
   Content-Type: application/pem-certificate-chain; charset=utf-8
-  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index", <https://pebble.acmelabs.local:14000/certZ/14866f1c6cce8a10/alternate/1>;rel="alternate"
-  Replay-Nonce: ITfrKlU1dwmpxr1LsYBShA
+  Link: <https://pebble.acmelabs.local:14000/dir>;rel="index", <https://pebble.acmelabs.local:14000/certZ/730eee6d49373bab/alternate/1>;rel="alternate"
+  Replay-Nonce: 1-EDvoC_Lh1wHgr4QVBQMg
   Transfer-Encoding: chunked
   
   -----BEGIN CERTIFICATE-----
-  MIICmDCCAYCgAwIBAgIIFIZvHGzOihAwDQYJKoZIhvcNAQELBQAwKDEmMCQGA1UE
+  MIICmDCCAYCgAwIBAgIIcw7ubUk3O6swDQYJKoZIhvcNAQELBQAwKDEmMCQGA1UE
   ...
-  sPeTXGqMvazUTjs51UMjTkRFtFUJlGh8HoO86iFJbl5pJsma4OL69aeHtTk=
+  YWuTWjzfrmUVM37Pbeoru5tR+kW2LwLuKw+pkECuV4tBLq6L0mgy4Gk/RDk=
   -----END CERTIFICATE-----
   -----BEGIN CERTIFICATE-----
-  MIIDUDCCAjigAwIBAgIIXn5x8Zi3Ds0wDQYJKoZIhvcNAQELBQAwIDEeMBwGA1UE
+  MIIDUDCCAjigAwIBAgIId5Z4J4JfGSYwDQYJKoZIhvcNAQELBQAwIDEeMBwGA1UE
   ...
-  nQn5+/5xCqTFELxCKRm8pJ9KmGC1lfahS6se+TUSU5FUn3CO
+  cL6yx5whyngs+a2EhHPLAe5sSCLLpGux7aAOsLKk+VSUsvwP
   -----END CERTIFICATE-----
   ```
 </details>
@@ -526,12 +510,12 @@ In the below we show the former "pending" state.
   #!/bin/bash
 
   ## Move the renewed certificate to the correct location for the NGINX config.
-  cp -f /etc/letsencrypt/live/${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
+  cp -f /etc/letsencrypt/live/${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
 
   ## Reload the NGINX config
   nginx -s reload
   ```
 </details>
 
-While there are variations not discussed here (ex. key rotation), the above summarizes a generic ACME protocol exchange for dns-01 proof validation.
+While there are variations not discussed here (ex. key rotation), the above summarizes a generic ACME protocol exchange for http-01 proof validation.
 
