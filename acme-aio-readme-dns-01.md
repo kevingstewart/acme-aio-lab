@@ -77,7 +77,7 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
 
 1. Start the Docker Compose environment.
    ```shell
-   docker compose up -d
+   docker compose -f acme-aio-internal-compose.yaml up -d
    ```
 2. Tail the NGINX container log until the logs settles. Many things are happening under the hood.
    ```shell
