@@ -391,7 +391,7 @@ services:
         ## Generate certbot deploy-hook script (moves renewed certs to correct destination for webserver)
         cat > /acme-hook-deploy.sh << 'EOF'
         #!/bin/bash
-        cp -f /etc/letsencrypt/live/$${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
+        cp -f /etc/letsencrypt/live/$${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
         nginx -s reload
         EOF
 
