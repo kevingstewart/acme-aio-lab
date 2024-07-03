@@ -64,7 +64,7 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
   #!/bin/bash
 
   ## Move the renewed certificate to the correct location for the NGINX config.
-  cp -f /etc/letsencrypt/live/${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
+  cp -f /etc/letsencrypt/live/${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
 
   ## Reload the NGINX config
   nginx -s reload
@@ -562,7 +562,7 @@ In the below we show the former "pending" state.
   #!/bin/bash
 
   ## Move the renewed certificate to the correct location for the NGINX config.
-  cp -f /etc/letsencrypt/live/${CERTBOT_DOMAIN}/* /etc/letsencrypt/live/f5labs.local/
+  cp -f /etc/letsencrypt/live/${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
 
   ## Reload the NGINX config
   nginx -s reload
