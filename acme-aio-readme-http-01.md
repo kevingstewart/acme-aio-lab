@@ -44,7 +44,7 @@ Note that in this lab the Cerbot ACME client will use the **standalone** option,
 
 1. Start the Docker Compose environment.
    ```shell
-   docker compose up -d
+   docker compose -f acme-aio-internal-compose.yaml up -d
    ```
 2. Tail the NGINX container log until the logs settles. Many things are happening under the hood.
    ```shell
