@@ -10,7 +10,7 @@ That is, the client must simply be able to control the DNS records for the reque
 
 #### References
 ACMEv2 dns-01 is covered in the following references:
-- [https://datatracker.ietf.org/doc/html/rfc8555#section-8.3](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
+- https://datatracker.ietf.org/doc/html/rfc8555#section-8.4
 
 <br />
 
