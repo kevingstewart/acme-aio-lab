@@ -1,13 +1,21 @@
 ### ACMEv2 All-in-One Testing Lab for DNS-01 Proof Validation
 All ACME proof validations must prove ownership of *something*. For the **dns-01** challenge, the client must prove:
 
-- Ownership and control of the DNS domain
+- Ownership of the DNS domain
+- Ownership and control over DNS records in that domain
 
 <br />
 
 That is, the client must simply be able to control the DNS records for the requested domain. The following description of the protocol exchange is super-simplistic for the sake of illustrating the dns-01 proof requirement, and assumes things like client registration are complete. A more detailed protocol exchange is included further down in this document. Also for the sake of this document, the term "ACME provider", or simply "provider" is used to indicate an ACME service (ex. Let's Encrypt).
 
-**Simplified ACME DNS-01 Protocol Exchange**
+#### References
+ACMEv2 dns-01 is covered in the following references:
+- [https://datatracker.ietf.org/doc/html/rfc8555#section-8.3](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
+
+<br />
+
+
+#### Simplified ACME DNS-01 Protocol Exchange
 - An ACME client sends a request to an ACME provider to "order" a new certificate (ex. www.example.com).
 - The ACME provider sends back a list of supported proof validation options, typically **http-01**, **dns-01**, and **tls-alpn-01**, and the client indicates that it wants to use **dns-01**.
 - The provider then sends a validation token (ex. _4FirTtbveHPsRiDRxAVOgvYsaCSOzPGy_)
