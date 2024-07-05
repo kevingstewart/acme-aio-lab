@@ -10,7 +10,7 @@ That is, the client must own the DNS record for the requested domain, and must h
 
 #### References
 ACMEv2 http-01 is covered in the following references:
-- [https://datatracker.ietf.org/doc/html/rfc8555#section-8.3](https://datatracker.ietf.org/doc/html/rfc8555#section-8.3)
+- https://datatracker.ietf.org/doc/html/rfc8555#section-8.3
 
 <br />
 
