@@ -8,7 +8,13 @@ All ACME proof validations must prove ownership of *something*. For the **http-0
 
 That is, the client must own the DNS record for the requested domain, and must have application-level control of the TLS service that the DNS record point to. The following description of the protocol exchange is super-simplistic for the sake of illustrating the http-01 proof requirement, and assumes things like client registration are complete. A more detailed protocol exchange is included further down in this document. Also for the sake of this document, the term "ACME provider", or simply "provider" is used to indicate an ACME service (ex. Let's Encrypt).
 
-**Simplified ACME HTTP-01 Protocol Exchange**
+#### References
+ACMEv2 http-01 is covered in the following references:
+- [https://datatracker.ietf.org/doc/html/rfc8555#section-8.3](https://datatracker.ietf.org/doc/html/rfc8555#section-8.3)
+
+<br />
+
+#### Simplified ACME HTTP-01 Protocol Exchange
 - An ACME client sends a request to an ACME provider to "order" a new certificate (ex. www.example.com).
 - The ACME provider sends back a list of supported proof validation options, typically **http-01**, **dns-01**, and **tls-alpn-01**, and the client indicates that it wants to use **http-01**.
 - The provider then sends a validation token (ex. _V8HttT5ph9UNpcIM0sF28B7dfFVtdH7P_)
