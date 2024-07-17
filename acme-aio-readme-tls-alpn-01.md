@@ -102,6 +102,7 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
   <br />
   All subsequent requests must contain a Nonce value to protect against replay attacks. To get the initial nonce the client makes a HEAD request to the "newNonce" service URL, which is then returned in a "Replay-Nonce" header.
   <br />
+   
   ```
   HEAD https://pebble.acmelabs.local:14000/nonce-plz
   -------------------------------------------
@@ -115,8 +116,9 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
 <details>
   <summary>3. Registration request (newAccount service)</summary>
   <br />
-  <br />
   Assuming the client has not yet registered with the ACME provider, it needs to first make a POST request to the "newAccount" service. The content of the request payload includes a "payload" block containing the "contact" email address and agreement to the provider's terms-of-service, a "protected" block that contains the previous nonce, service URL, and JSON web key attributes (algorithm, key type, modulus[n], and exponent[e]), and a "signature" block that is a digital signature using the client's private key. Note that in this and all following requests, the "protected" and "payload" blocks are base64-encoded. These are shown decoded here to better understand the protocol exchange. Also note that the provider should return a new nonce value in each response, which the client should use in the subsequent request.
+  <br />
+   
   ```
   POST https://pebble.acmelabs.local:14000/sign-me-up
   {
