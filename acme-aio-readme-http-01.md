@@ -30,17 +30,27 @@ This is the general flow of ACMEv2 http-01. Again, a more detailed and correct d
 -----
 
 ### Testing ACMEv2 HTTP-01 in the All-in-One Lab Environment
-The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of the necessary components to support a fully-contained, container-based environment. No external services are required. For HTTP-01 testing specifically, you need an ACME client (NGINX server), an ACME provider (Pebble or Smallstep), and a DNS server (Bind). During the proof phase of the protocol exchange, the client must be able to create an HTTP port 80 listener configuration, and subsequently remove it. 
+The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of the necessary components to support a fully-contained, container-based environment. No external services are required. For HTTP-01 testing specifically, you need an ACME client (NGINX server with acme.sh client), an ACME provider (Pebble or Smallstep), and a DNS server (Bind). During the proof phase of the protocol exchange, the client must be able to create an HTTP port 80 listener configuration, and subsequently remove it. 
 
-Note that in this lab the Cerbot ACME client will use the **standalone** option, which will create the HTTP port 80 listener internally. As the Certbot agent is running in the same container as the NGINX TLS service, the DNS IP will be the same. Once the Certbot client has the new certificate, it just needs to push that to NGINX and reload the TLS service configuration. This is done with a simple "deploy hook" Bash script:
+Note that in this lab the acme.sh ACME client will use the **standalone** option, which will create the HTTP port 80 listener internally. As the acme.sh agent is running in the same container as the NGINX TLS service, the DNS IP will be the same. Once the acme.sh client has the new certificate, it just needs to push that to NGINX and reload the TLS service configuration. This is done with a simple "deploy hook" Bash script:
 
 <details>
   <summary>HTTP-01 "deploy hook" script to move the certificate into place and reload the TLS server</summary>
   
   ```shell
-  #!/bin/bash
-  cp -f /etc/letsencrypt/live/${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
-  nginx -s reload
+  #!/usr/bin/bash
+  nginx_local_deploy() {
+      _cdomain="$1"
+      _ckey="$2"
+      _ccert="$3"
+      _cca="$4"
+      _cfullchain="$5"
+
+      cp -f "$_ccert" /etc/letsencrypt/live/f5labs.local/cert.pem
+      cp -f "$_ckey" /etc/letsencrypt/live/f5labs.local/privkey.pem
+      cp -f "$_cfullchain" /etc/letsencrypt/live/f5labs.local/chain.pem
+      nginx -s reload
+  }
   ```
 </details>
 
@@ -66,14 +76,11 @@ Note that in this lab the Cerbot ACME client will use the **standalone** option,
    ```
 5. From the NGINX container, execute an ACME certificate renewal request to one of the ACME providers for a new certificate. The -vvv option on the command line will dump the entire ACME protocol exchange for your review. The below example uses the Pebble ACME server for the www.f5labs.local domain and specifies the deploy hook script.
    ```shell
-   server=https://pebble.acmelabs.local:14000/dir
-   domain=www.f5labs.local
-   certbot certonly --standalone \
-   --no-eff-email --email admin@f5labs.local \
-   -vvv --no-verify-ssl --agree-tos \
-   --server ${server} \
-   --domains ${domain} \
-   --deploy-hook "/acme-hook-deploy.sh"
+   export SERVER=https://pebble.acmelabs.local:14000/dir
+   #export SERVER=https://smallstep.acmelabs.local:9000/acme/acme/directory
+   export DOMAIN=test.f5labs.local
+   /root/acme/acme.sh --issue --standalone --insecure --server ${SERVER} -d ${DOMAIN} --force && \
+   /root/acme/acme.sh --deploy -d ${DOMAIN} --deploy-hook nginx_local
    ```
 6. From the NGINX container, view the properties of the renewed certificate.
    ```shell
@@ -93,7 +100,7 @@ Note that in this lab the Cerbot ACME client will use the **standalone** option,
 -----
 ### Detailed ACMEv2 HTTP-01 Protocol Exchange
 
-The ```-vvv``` option in the Certbot command will print out all of the protocol exchange messages. The following section elaborates on each of these messages.
+The ```--debug``` option in the acme.sh command will print out all of the protocol exchange messages. The following section elaborates on each of these messages.
 
 <details>
   <summary>1. Directory service request</summary>
@@ -290,7 +297,7 @@ The ```-vvv``` option in the Certbot command will print out all of the protocol 
 <details>
   <summary>6. Client Function: Stage the HTTP port 80 listener and token</summary>
   <br />
-  The implementation of this step is dependent on both the client's capabilities and the target TLS resource. With the http-01 proof validation, the provider is going to query public DNS for the IP of the requested domain and then make an HTTP port 80 request to that domain seeking a response on the "/.well-known/acme-challenge/[token]" URL, expecting the token to be in the response. This proves to the provider that the requestor owns both the DNS record and the application asset. Using the --standalone option on the Certbot client enables it to stand up an ephemeral HTTP port 80 listener directly (without needing to manipulate the NGINX TLS server). This works because the Certbot client is running on the same server address as the NGINX instance. In a real-world scenario, however, it is often useful to manipulate the TLS server's configuration to have it listen on HTTP port 80 and respond with the validation token. This can be handled in several ways:
+  The implementation of this step is dependent on both the client's capabilities and the target TLS resource. With the http-01 proof validation, the provider is going to query public DNS for the IP of the requested domain and then make an HTTP port 80 request to that domain seeking a response on the "/.well-known/acme-challenge/[token]" URL, expecting the token to be in the response. This proves to the provider that the requestor owns both the DNS record and the application asset. Using the --standalone option on the acme.sh client enables it to stand up an ephemeral HTTP port 80 listener directly (without needing to manipulate the NGINX TLS server). This works because the acme.sh client is running on the same server address as the NGINX instance. In a real-world scenario, however, it is often useful to manipulate the TLS server's configuration to have it listen on HTTP port 80 and respond with the validation token. This can be handled in several ways:
 
 - Pre-stage the /.well-known/acme-challenge/ HTTP port 80 listener in the web server's configuration and then have the ACME client drop the token into that "folder" during the proof validation.
 - Use a script to create a temporary HTTP port 80 listener config on the web server and insert the validation token.
@@ -509,17 +516,23 @@ In the below we show the former "pending" state.
 <details>
   <summary>13. Client Function: Move the Certificate(s) into Position</summary>
   <br />
-  Wherever the ACME client may be running, it now needs to move the new certificate(s) into position where the TLS server needs them. In the case of a server like NGINX, it also needs to reload the configuration data to update the certificates in memory. For the sake of completeness, this lab's Bash script is included that simply copies the renewed certificates into the location that NGINX is expecting, and then issues a config reload. This process is otherwise highly dependent on the TLS server.
+  Wherever the ACME client may be running, it now needs to move the new certificate(s) into position where the TLS server needs them. In the case of a server like NGINX, it also needs to reload the configuration data to update the certificates in memory. For the sake of completeness, this lab's Bash script is included that simply copies the renewed certificates into the location that NGINX is expecting, and then issues a config reload. This process is otherwise highly dependent on the TLS server. The following is called from the acme.sh ```--deploy``` function.
   <br />
   
   ```
-  #!/bin/bash
+  #!/usr/bin/bash
+  nginx_local_deploy() {
+      _cdomain="$$1"
+      _ckey="$$2"
+      _ccert="$$3"
+      _cca="$$4"
+      _cfullchain="$$5"
 
-  ## Move the renewed certificate to the correct location for the NGINX config.
-  cp -f /etc/letsencrypt/live/${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
-
-  ## Reload the NGINX config
-  nginx -s reload
+      cp -f "$$_ccert" /etc/letsencrypt/live/f5labs.local/cert.pem
+      cp -f "$$_ckey" /etc/letsencrypt/live/f5labs.local/privkey.pem
+      cp -f "$$_cfullchain" /etc/letsencrypt/live/f5labs.local/chain.pem
+      nginx -s reload
+  }
   ```
 </details>
 
