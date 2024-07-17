@@ -40,7 +40,7 @@ services:
                 listen-on { any; };
                 listen-on-v6 { any; };
                 forwarders {
-                        172.16.0.1;
+                      172.16.0.1;
                 };
         };
         key "rndc-key" {
@@ -54,6 +54,10 @@ services:
         zone "f5labs.local" {
                 type primary;
                 file "/var/lib/bind/db.f5labs.local";
+                update-policy {
+                      grant rndc-key zonesub any;
+                      grant * self . TXT;
+                };
         };
         zone "acmelabs.local" {
                 type primary;
@@ -80,8 +84,8 @@ services:
         $$TTL 5 ;
         $$ORIGIN f5labs.local.
 
-        @       IN      SOA     ns.     hostmaster.f5labs.local (
-        2003080800 ; serial number
+        @       IN      SOA     ns.     hostmaster (
+        2003080801 ; serial number
         12h        ; refresh
         15m        ; update retry
         3w         ; expiry
@@ -102,8 +106,8 @@ services:
         $$TTL 5 ;
         $$ORIGIN acmelabs.local.
 
-        @       IN      SOA     ns.     hostmaster.acmelabs.local (
-        2003080800 ; serial number
+        @       IN      SOA     ns.     hostmaster (
+        2003080801 ; serial number
         12h        ; refresh
         15m        ; update retry
         3w         ; expiry
@@ -156,7 +160,7 @@ services:
             "certificate": "/configs/ca-cert.pem",
             "privateKey": "/configs/ca-key.pem",
             "httpPort": 80,
-            "tlsPort": 5001,
+            "tlsPort": 443,
             "ocspResponderURL": "",
             "externalAccountBindingRequired": false,
             "domainBlocklist": ["blocked-domain.example"],
@@ -352,15 +356,25 @@ services:
       - /bin/bash
       - -c
       - |
+        ## Install acme.sh client
+        curl https://get.acme.sh | sh -s email=admin@f5labs.local --nocron --home /root/acme --cert-home /root/acme/certs --config-home /root/acme/data
+
+        ## Generate acme.sh client rfc2136 credentials file
+        cat > /root/rfc2136-acmesh.ini << 'EOF'
+        key "rndc-key" {
+              algorithm hmac-sha256;
+              secret "HU5Owk1hw5MgKfcddBuvGLtwVB/GdqjkR6FJLrhIKtQ=";
+        };
+        EOF
+        
+        ## Set proper permissions on rfc2136 credentials file
+        chmod 600 /root/rfc2136-acmesh.ini
+
         ## Wait until bind is up
         until [[ $(dig @10.10.0.53 www.example.com | grep -c "ANSWER SECTION") == 1 ]]
         do 
           echo 'waiting for dns' && sleep 5
         done
-
-        ## Install packages
-        apk add sshpass -f
-        apk add certbot -f
 
         ## Start a never ending task to keep container running
         tail -f /dev/null
@@ -385,35 +399,43 @@ services:
       - -c
       - |
         ## Install packages
-        apt update && apt install certbot dnsutils sshpass -y
+        apt update && apt install dnsutils socat -y
         mkdir -p /etc/letsencrypt/live/f5labs.local
 
-        ## Generate certbot deploy-hook script (moves renewed certs to correct destination for webserver)
-        cat > /acme-hook-deploy.sh << 'EOF'
-        #!/bin/bash
-        cp -f /etc/letsencrypt/live/$${RENEWED_DOMAINS}/* /etc/letsencrypt/live/f5labs.local/
-        nginx -s reload
-        EOF
+        ## Install acme.sh client
+        curl https://get.acme.sh | sh -s email=admin@f5labs.local --nocron --home /root/acme --cert-home /root/acme/certs --config-home /root/acme/data
 
-        ## Generate certbot pre-hook dns-01 script (stages DNS entry for challenge)
-        cat > /acme-hook-dns-pre.sh << 'EOF'
-        #!/bin/bash
-        domaintl=$$(echo $$CERTBOT_DOMAIN | sed 's/.f5labs.local//')
-        sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 "echo \"_acme-challenge.$${domaintl}  120 IN  TXT   $${CERTBOT_VALIDATION}\" >> /var/lib/bind/db.f5labs.local && rndc reload"
-        sleep 5
+        ## Generate acme.sh client rfc2136 credentials file
+        cat > /root/rfc2136-acmesh.ini << 'EOF'
+        key "rndc-key" {
+              algorithm hmac-sha256;
+              secret "HU5Owk1hw5MgKfcddBuvGLtwVB/GdqjkR6FJLrhIKtQ=";
+        };
         EOF
-
-        ## Generate certbot post-hook dns-01 script (cleans up staged DNS entry)
-        cat > /acme-hook-dns-post.sh << 'EOF'
-        #!/bin/bash
-        sshpass -p 'bob' ssh -o StrictHostKeyChecking=no bob@10.10.0.53 'sed -i '/^_acme-challenge.*/d' /var/lib/bind/db.f5labs.local && rndc reload'
-        EOF
-
-        ## Make certbot pre and post-hook scripts executable
-        chmod +x /acme-hook-deploy.sh
-        chmod +x /acme-hook-dns-pre.sh
-        chmod +x /acme-hook-dns-post.sh        
         
+        ## Set proper permissions on rfc2136 credentials file
+        chmod 600 /root/rfc2136-acmesh.ini
+
+        ## General acme.sh deploy-hook script for local nginx
+        cat > /root/acme/deploy/nginx_local.sh << 'EOF'
+        #!/usr/bin/bash
+        nginx_local_deploy() {
+            _cdomain="$$1"
+            _ckey="$$2"
+            _ccert="$$3"
+            _cca="$$4"
+            _cfullchain="$$5"
+
+            cp -f "$$_ccert" /etc/letsencrypt/live/f5labs.local/cert.pem
+            cp -f "$$_ckey" /etc/letsencrypt/live/f5labs.local/privkey.pem
+            cp -f "$$_cfullchain" /etc/letsencrypt/live/f5labs.local/chain.pem
+            nginx -s reload
+        }
+        EOF
+
+        ## Set executable permissions on the deploy-hook script
+        chmod +x /root/acme/deploy/nginx_local.sh
+     
         ## Generate configuration file
         cat > /etc/nginx/nginx.conf << 'EOF'
         events {}
