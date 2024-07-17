@@ -538,3 +538,28 @@ In the below we show the former "pending" state.
 
 While there are variations not discussed here (ex. key rotation), the above summarizes a generic ACME protocol exchange for http-01 proof validation.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
