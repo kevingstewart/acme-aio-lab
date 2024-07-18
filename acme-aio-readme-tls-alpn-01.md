@@ -20,7 +20,9 @@ ACMEv2 tls-alpn-01 is covered in the following references:
 - An ACME client sends a request to an ACME provider to "order" a new certificate (ex. www.example.com).
 - The ACME provider sends back a list of supported proof validation options, typically **http-01**, **dns-01**, and **tls-alpn-01**, and the client indicates that it wants to use **tls-alpn-01**.
 - The provider then sends a validation token (ex. _V8HttT5ph9UNpcIM0sF28B7dfFVtdH7P_)
-- The client must now configures the TLS properties of the TLS application to inject the token in the TLS handshake. The client then tells the provider that it's ready.
+- The client must now configures the TLS properties of the TLS application to inject the token in the TLS handshake. The client then tells the provider that it's ready. In the case of tls-alpn-01, the client needs to do two things:
+  - Configure a TLS listener to support an ALPN extension with the single protocol name "acme-tls/1".
+  - Create a self-signed certificate containing the single requested domain name as the subjectAltName extension, and an "acmeIdentifier" extension containing the SHA-256 digest of the authorization key.
 - The provider may take some time to perform its validation, so the client will periodically poll the provider for status. Once the provider is done and the status is good, the client will send a Certificate Signing Request (CSR) for the requested certificate.
 - The provider will create the certificate and send the client a URL it can use to fetch it.
 - The client fetches the new certificate from this URL and should now remove TLS validation configuration.
@@ -117,7 +119,6 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
   <summary>3. Registration request (newAccount service)</summary>
   <br />
   Assuming the client has not yet registered with the ACME provider, it needs to first make a POST request to the "newAccount" service. The content of the request payload includes a "payload" block containing the "contact" email address and agreement to the provider's terms-of-service, a "protected" block that contains the previous nonce, service URL, and JSON web key attributes (algorithm, key type, modulus[n], and exponent[e]), and a "signature" block that is a digital signature using the client's private key. Note that in this and all following requests, the "protected" and "payload" blocks are base64-encoded. These are shown decoded here to better understand the protocol exchange. Also note that the provider should return a new nonce value in each response, which the client should use in the subsequent request.
-  <br />
    
   ```
   POST https://pebble.acmelabs.local:14000/sign-me-up
@@ -149,6 +150,16 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
        "y": "JVLY5pBd_Ok8Jtwmo38tSS5FfJjAw2QxHm83-ijowkw"
     }
   }
+  ```
+  
+  <br />
+  Critical to the tls-alpn-01 proof validation, the client is in possession of a JSON web key (jwk) that is to be part of the acmeIdentifier value in the TLS certificate. The "account thumbrint" is created by performing a SHA256 digest of this jwk:
+
+  ```
+  jwk='{"crv": "P-256", "kty": "EC", "x": "rNxQYtY7fF_AxCycllVc6zNvuDbv3KXVAk5WYDS-Fxg", "y": "JVLY5pBd_Ok8Jtwmo38tSS5FfJjAw2QxHm83-ijowkw"}'
+  ACCOUNT_THUMBPRINT=printf "%s" "$jwk" | tr -d ' ' | openssl dgst -sha256 -binary | base64 | tr '/+' '_-' | tr -d '= '
+
+  --> returns "ADIKWIdBiFhd364g1tTY0YcmImSVayKIOX7obdTStNw"
   ```
 </details>
 
@@ -256,20 +267,102 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
     ],
     "expires": "2024-07-17T21:16:19Z"
   }
-  ```  
+  ```
+
+  <br />
+  The client now has the validation token for tls-alpn-01 (pahg-IDA0PtJku-7oJJHmCJu3kee9Kdmq4Jf84SPzjU) and can use that to complete the "authorization key" to be used in the acmeIdentifier extension of the certificate. The authorization key is the SHA256 digest of the "[TOKEN].[ACCOUNT_THUMBPRINT]" values:
+  <br /><br />
+
+  ```
+  ACCOUNT_THUMBPRINT="ADIKWIdBiFhd364g1tTY0YcmImSVayKIOX7obdTStNw"
+  TOKEN="pahg-IDA0PtJku-7oJJHmCJu3kee9Kdmq4Jf84SPzjU"
+  AUTHORIZATION_KEY="pahg-IDA0PtJku-7oJJHmCJu3kee9Kdmq4Jf84SPzjU.ADIKWIdBiFhd364g1tTY0YcmImSVayKIOX7obdTStNw"
+
+  printf "%s" "$AUTHORIZATION_KEY" | openssl dgst -sha256 -hex
+
+  --> returns "78364af0434f189d288f20f4fb4676552766f21683113ec6ffd7b663519a1837"
+  ```
 </details>
 
 <details>
   <summary>6. Client Function: Stage the TLS ALPN challenge</summary>
   <br />
   The implementation of this step is dependent on both the client's capabilities and the target TLS resource. The goal is to insert the challenge token into the TLS ALPN configuration of the application. Proof validation is established by virtue of the TLS handshake that happens from the provider the the TLS application. For the sake of completeness, however, the acme.sh client in this lab will not modify the NGINX TLS application, but rather use a standalone function on the Netshoot host. The acme.sh client will create the requisite TLS ALPN configuration and start a TLS port 443 listener directly.
-  <br />
+  <br /><br />
+  The tls-alpn-01 proof validation requires a TLS server configured to use an ALPN extension with a single protocol name "acme-tls/1" and a self-signed validation certificate containing the single requested domain name as the subjectAltName extension, and the (ASN.1 DER-encoded) SHA256 digest authorization key as an acmeIdentifier extension (1.3.6.1.5.5.7.1.31: critical). The provider will initiate a TLS ALPN handshake with the server and expect to see these values. Please refer to https://www.rfc-editor.org/rfc/rfc8737.html for exact technical semantics. The below is an example tls-alpn-01 validation certificate. The important fields are: 
+  <br /><br />
+   
+   - The "X509v3 Subject Alternative Name" extension indicating the requested domain name
+   - The "1.3.6.1.5.5.7.1.31: critical" extension indicating the "acmeIdentifier" - an ASN.1 DER-encoded SHA256 digest of the authorization key
+
+   ```
+   Certificate:
+       Data:
+           Version: 3 (0x2)
+           Serial Number:
+               68:4d:fc:10:eb:8b:55:78:39:9e:d8:65:63:45:2c:fa:3b:5c:dc:9f
+           Signature Algorithm: sha256WithRSAEncryption
+           Issuer: CN=tls.acme.sh
+           Validity
+               Not Before: Jul 18 13:18:33 2024 GMT
+               Not After : Jul 18 13:18:33 2025 GMT
+           Subject: CN=tls.acme.sh
+           Subject Public Key Info:
+               Public Key Algorithm: rsaEncryption
+                   Public-Key: (2048 bit)
+                   Modulus:
+                       00:a7:af:fb:da:25:fe:91:45:d0:08:6e:85:5e:f6:
+                       2d:32:63:0f:1a:96:3b:22:db:45:69:7a:24:87:76:
+                       f5:0d:61:5f:91:b4:c9:30:5a:bb:7b:1c:83:6d:e4:
+                       0a:0a:b4:56:11:21:90:2b:09:47:2c:7c:ce:6c:42:
+                       bc:6e:e4:5c:26:1c:96:41:85:15:ce:c1:b2:1b:10:
+                       a6:13:af:27:9b:ce:75:f4:5e:cd:b8:32:91:7e:de:
+                       34:54:18:7f:cb:93:71:4d:87:aa:71:0c:04:4b:ac:
+                       4e:07:04:31:0a:6b:84:7e:fa:af:68:0d:42:61:79:
+                       e2:75:14:75:bb:dd:50:0b:44:f0:0f:2e:70:2d:0c:
+                       d2:e6:ca:3d:3a:b3:ef:50:d6:8c:b6:21:f2:4c:e3:
+                       c3:e8:a7:2d:f2:a4:ef:49:9c:9b:93:e4:e8:16:12:
+                       24:3a:8a:0a:99:e7:bd:4b:d6:ab:f6:e3:83:6e:9a:
+                       f4:0d:ac:cf:5c:ab:1b:01:15:56:b3:6a:da:3e:21:
+                       0e:f8:d4:a0:8b:c5:40:7e:6e:1f:4c:89:97:f3:f4:
+                       3b:ff:3a:fb:5d:d8:46:8d:8d:ad:39:a0:00:de:1d:
+                       f7:3c:aa:eb:82:19:c9:9a:48:4f:15:57:ef:dd:d6:
+                       7f:69:48:49:fc:c1:82:ea:ef:7b:c6:c0:48:6d:ea:
+                       b2:2b
+                   Exponent: 65537 (0x10001)
+           X509v3 extensions:
+               X509v3 Extended Key Usage: 
+                   TLS Web Server Authentication, TLS Web Client Authentication
+               X509v3 Subject Alternative Name: 
+                   DNS:utility.f5labs.local
+               1.3.6.1.5.5.7.1.31: critical
+                   . ....<.R#x2E...)LA..A...o....w...
+               X509v3 Subject Key Identifier: 
+                   76:6B:DF:80:BC:7C:60:D8:A2:61:84:35:E5:23:3A:F3:3E:97:F9:78
+       Signature Algorithm: sha256WithRSAEncryption
+       Signature Value:
+           84:14:c7:02:e2:b0:d5:93:12:be:b3:c7:80:e7:36:35:7e:84:
+           a9:1b:a1:55:d9:c6:25:ab:ca:87:b8:23:5f:70:d8:1b:25:e3:
+           7c:fe:70:8a:2a:4b:54:97:9f:17:ff:96:64:52:eb:f9:3b:dd:
+           ce:f3:03:38:3c:67:81:dc:63:67:b4:3f:09:81:fd:df:48:e9:
+           6d:9a:d9:de:3d:84:54:52:cf:76:8a:05:0c:3e:0e:0a:b6:ab:
+           f5:c2:68:c9:01:40:51:f5:b6:4c:c9:23:87:70:c1:d3:25:7b:
+           29:50:39:1f:f6:f5:60:d6:24:63:41:7e:de:b8:de:4a:78:f0:
+           f7:07:ff:2c:a8:b1:0f:bb:ea:3c:eb:07:4d:76:d5:b0:8a:21:
+           21:2a:ea:47:a4:72:26:70:9a:fc:ef:b2:ad:4a:fe:50:89:1b:
+           60:66:67:3f:6a:2c:d1:fb:f0:d2:cf:35:f8:20:66:17:9a:16:
+           48:f1:23:e1:46:da:ca:52:8b:07:ed:87:be:c0:eb:8f:d8:26:
+           5a:aa:d5:cf:ec:0f:99:a6:d7:4d:f4:f0:98:b8:84:ea:fe:c8:
+           33:2f:af:3c:42:4b:67:c5:03:b3:a5:64:7c:95:cd:26:4f:d9:
+           f0:95:5e:1a:fc:db:2b:70:a4:48:e1:7b:a2:60:d8:86:52:f7:
+           53:51:ee:0c
+   ```
 </details>
 
 <details>
   <summary>7. Let the provider know the challenge is ready</summary>
   <br />
-  Notice also the "url" value in the tls-alpn-01 block of the authorizations response. This URL is how the client will indicate its preference to use tls-alpn-01 proof validation. The client needs to make a POST request to this URL, pass in "protected" block, empty "payload" block, and the "signature" block. The provider will return the same dns-01 authorizations block with a "pending" status, indicating it will commence validation.
+  Notice also the "url" value in the tls-alpn-01 block of the authorizations response. This URL is how the client will indicate its preference to use tls-alpn-01 proof validation. The client needs to make a POST request to this URL, pass in "protected" block, empty "payload" block, and the "signature" block. The provider will return the same tls-alpn-01 authorizations block with a "pending" status, indicating it will commence validation.
   <br />
 
   ```
@@ -346,7 +439,7 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
 <details>
   <summary>9. Client Function: Clean up the TLS ALPN challenge</summary>
   <br />
-  The implementation of this step is dependent on both the client's capabilities and the target DNS resource. For public DNS like Cloudflare, this is usually handled with an API and API key(s). The goal is simply to remove the previous DNS TXT record for this domain (zone). 
+  The implementation of this step is dependent on both the client's capabilities and the target TLS application. The goal here is simply to remove the ALPN "acme-tls/1" configuration and corresponding self-signed validation certificate from the server's TLS settings. 
   <br />  
 </details>
 
