@@ -12,7 +12,7 @@ The above linked pages describe each proof validation in more detail, as a serie
 
 ----
 
-### Testing Environment
+### Self-Contained Testing Environment
 A testing environment is contained within this repository in the form of a Docker Compose file. This ["all-in-one" Docker Compose](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-internal-compose.yaml) creates the following services needed to build an ACMEv2 testing lab:
 
 - DNS server (bind9)
