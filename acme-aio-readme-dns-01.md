@@ -84,7 +84,7 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
    ```shell
    docker exec -it nginx /bin/bash
    ```
-5. From the NGINX container, execute an ACME certificate renewal request to one of the ACME providers for a new certificate. The -vvv option on the command line will dump the entire ACME protocol exchange for your review. The below example uses the Pebble ACME server for the www.f5labs.local domain and specifies each of the hook scripts.
+5. From the NGINX container, execute an ACME certificate renewal request to one of the ACME providers for a new certificate. The -vvv option on the command line will dump the entire ACME protocol exchange for your review. The below example uses the Pebble ACME server for the www.f5labs.local domain and specifies each of the hook scripts. The first two "NSUPDATE" variables are used by the acme.sh client to perform an RFC2136 remote DNS update to the Bind server.
    ```shell
    export NSUPDATE_KEY=/root/rfc2136-acmesh.ini
    export NSUPDATE_SERVER=10.10.0.53
