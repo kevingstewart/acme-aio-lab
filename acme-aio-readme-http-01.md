@@ -78,7 +78,7 @@ Note that in this lab the acme.sh ACME client will use the **standalone** option
    ```shell
    export SERVER=https://pebble.acmelabs.local:14000/dir
    #export SERVER=https://smallstep.acmelabs.local:9000/acme/acme/directory
-   export DOMAIN=test.f5labs.local
+   export DOMAIN=www.f5labs.local
    /root/acme/acme.sh --issue --standalone --insecure --server ${SERVER} -d ${DOMAIN} --force && \
    /root/acme/acme.sh --deploy -d ${DOMAIN} --deploy-hook nginx_local
    ```
