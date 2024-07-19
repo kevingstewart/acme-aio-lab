@@ -90,7 +90,7 @@ The ACMEv2 all-in-one lab consists of a Docker Compose file that builds all of t
    export NSUPDATE_SERVER=10.10.0.53
    export SERVER=https://pebble.acmelabs.local:14000/dir
    #export SERVER=https://smallstep.acmelabs.local:9000/acme/acme/directory
-   export DOMAIN=test1.f5labs.local
+   export DOMAIN=www.f5labs.local
    /root/acme/acme.sh --issue --dns dns_nsupdate --dnssleep 20 --insecure --server ${SERVER} -d ${DOMAIN} --force && \
    /root/acme/acme.sh --deploy -d ${DOMAIN} --deploy-hook nginx_local
    ```
