@@ -49,8 +49,24 @@ The environment is configured as such:
 - The Smallstep ACME server's directory is at (accessible internally): https://smallstep.acmelabs.local:9000/acme/acme/directory.
 
 
+----
 
+### Local Testing Environment
+A separate "local" testing environment is contained within this repository in the form of a Docker Compose file. This ["all-in-one local" Docker Compose](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-local-compose.yaml) creates the following services needed to build an ACMEv2 testing lab for your local lab environment:
 
+- DNS server (bind9)
+- (2) ACME servers
+  - Pebble
+  - SmallStep
+
+The difference between this and the self-contained lab is that ACME clients will be running somewhere else in the network. For this to work:
+
+- The external ACME client must add the Docker host as a DNS listener so that it can resolve the ACME providers (**pebble.acmelabs.local** and **smallstep.acmelabs.local**). The Bind container exposes TCP and UDP port 53 listeners to the Docker host.
+- The **f5labs.local** and **acmelabs.local** zones in the Docker compose file must be updated to match the local lab environment.
+  - In the acmelabs.local zone, the pebble and smallstep records should be the Docker host IP address.
+  - In the f5labs.local zone, update the wildcard record and/or create additional records that point to the IP addresses of the external ACME client(s).
+ 
+In the examples provided in the Docker compose file, the Docker host is at 172.16.1.114, so that's the IP used for the pebble and smallstep records in the acmelabs.local zone. The client is another virtual machine at 172.16.1.116, running Ubuntu, NGINX, and any ACME client software (ex. acme.sh, Certbot, Lego, etc.). The client is configured to add the Docker host as a DNS resource so that it can resolve the ACME providers, and the ACME providers use the same DNS service to resolve the client(s). The ACME client should now be able to request certificates for the f5labs.local domain.
 
 
 
