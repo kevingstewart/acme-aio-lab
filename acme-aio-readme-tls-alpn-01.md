@@ -584,6 +584,17 @@ In the below we show the former "pending" state.
 While there are variations not discussed here (ex. key rotation), the above summarizes a generic ACME protocol exchange for dns-01 proof validation.
 
 
+<br />
+
+-----
+### Additional Lab Environment Notes
+
+- The Smallstep ACME provider will sign new certificates using the embedded root CA certificate and key, but Pebble will create a new CA root and intermediate certificates and keys on each startup. To get to the Pebble CA certificates, issue the following Curl commands from within either of the ACME client hosts (NGINX or Netshoot)
+
+  ```
+  curl -sk https://pebble.acmelabs.local:15000/roots/0
+  curl -sk https://pebble.acmelabs.local:15000/intermediates/0
+  ```
 
 
 
