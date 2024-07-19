@@ -6,7 +6,7 @@ All ACME proof validations must prove ownership of *something*. For the **tls-al
 
 <br />
 
-That is, the client must own the DNS record for the requested domain, and must have control of the TLS configuration of the TLS service that the DNS record point to. The following description of the protocol exchange is super-simplistic for the sake of illustrating the tls-alpn-01 proof requirement, and assumes things like client registration are complete. A more detailed protocol exchange is included further down in this document. Also for the sake of this document, the term "ACME provider", or simply "provider" is used to indicate an ACME service (ex. Let's Encrypt).
+That is, the client must own the DNS record for the requested domain, and must have control of the TLS configuration of the TLS service that the DNS record points to. The following description of the protocol exchange is super-simplistic for the sake of illustrating the tls-alpn-01 proof requirement, and assumes things like client registration are complete. A more detailed protocol exchange is included further down in this document. Also for the sake of this document, the term "ACME provider", or simply "provider" is used to indicate an ACME service (ex. Let's Encrypt).
 
 
 #### References
