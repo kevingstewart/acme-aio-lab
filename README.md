@@ -16,12 +16,12 @@ The above linked pages describe each proof validation in more detail, as a serie
 A testing environment is contained within this repository in the form of a Docker Compose file. This ["all-in-one" Docker Compose](https://github.com/kevingstewart/acme-aio-lab/blob/main/acme-aio-internal-compose.yaml) creates the following services needed to build an ACMEv2 testing lab:
 
 - DNS server (bind9)
-- (2) ACME server implementations
+- (2) ACME servers
   - Pebble
   - SmallStep
-- (2) ACME client implementations
-  - NGINX (configured as a simple TLS web server, with [Certbot](https://eff-certbot.readthedocs.io/en/stable/intro.html) ACME client)
-  - Netshoot (generic network utility container, with Certbot ACME client)
+- (2) ACME clients
+  - NGINX (configured as a simple TLS web server, with [acme.sh](https://github.com/acmesh-official/acme.sh) ACME client)
+  - Netshoot (generic network utility container (named "utility"), with acme.sh ACME client)
 
 The compose file builds two networks - one "internal" managed by the DNS server, and one "external" for some services to expose ports outside the environment (specifically NGINX).
 
@@ -32,8 +32,8 @@ The environment is configured as such:
 - The DNS server listens on 10.10.0.53.
 - The Pebble ACME server listens on 10.10.20.100.
 - The Smallstep ACME server listens on 10.10.20.101.
-- The Netshoot utility container listens on 10.10.10.5 and utilizes the Certbot ACME client.
-- The NGINX server listens on 10.10.10.10, has an interface into the container "bridge" network to expose its 443 TLS port (8443 on the outside), utilizes the Certbot ACME client, and has a super-simple HTTPS listener configuration that returns "Hello World!".
+- The Netshoot utility container (named "utility") listens on 10.10.10.5 and utilizes the acme.sh ACME client.
+- The NGINX server listens on 10.10.10.10, has an interface into the container "bridge" network to expose its 443 TLS port (8443 on the outside), utilizes the acme.sh ACME client, and has a super-simple HTTPS listener configuration that returns "Hello World!".
 - The DNS server enables recursion, and maintains two zones and subsequent zone entries:
   - f5labs.local 
     ```
