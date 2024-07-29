@@ -395,8 +395,6 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
 <details>
   <summary>8. Poll the provider for validation status</summary>
   <br />
-  A busy ACME provider may take some time to get to this validation, so the client should continue to poll the provider for status. To do that it makes a POST request to the same authorizations URL, passing in "protected" block, empty "payload" block, and the "signature" block. Once the provider has had a chance to validate the challenge (initiate a TLS handshake) it will return a response to the client's poll indicating a "valid" status.
-  <br />
   For the tls-alpn-01 proof, the ACME provider makes a TLS handshake to the application and will insert the following ALPN extension information into its Client Hello message. Note the "acme-tls/1" string.
 
   ```
@@ -409,7 +407,7 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
         ALPN Next Protocol: acme-tls/1
   ```
 
-  On receipt of this Client Hello the application must use the ephemeral verification certification to complete the TLS handshake.
+  On receipt of this Client Hello the application must use the ephemeral verification certification to complete the TLS handshake. A busy ACME provider may take some time to get to this validation, so the client should continue to poll the provider for status. To do that it makes a POST request to the same authorizations URL, passing in "protected" block, empty "payload" block, and the "signature" block. Once the provider has had a chance to validate the challenge (initiate a TLS handshake) it will return a response to the client's poll indicating a "valid" status.
   <br />
 
   ```
