@@ -397,6 +397,20 @@ The ```--debug``` option in the acme.sh command will print out all of the protoc
   <br />
   A busy ACME provider may take some time to get to this validation, so the client should continue to poll the provider for status. To do that it makes a POST request to the same authorizations URL, passing in "protected" block, empty "payload" block, and the "signature" block. Once the provider has had a chance to validate the challenge (initiate a TLS handshake) it will return a response to the client's poll indicating a "valid" status.
   <br />
+  For the tls-alpn-01 proof, the ACME provider makes a TLS handshake to the application and will insert the following ALPN extension information into its Client Hello message. Note the "acme-tls/1" string.
+
+  ```
+  Extension: application_layer_protocol_negotiation (len=13)
+    Type: application_layer_protocol_negotiation (16)
+    Length: 13
+    ALPN Extension Length: 11
+    ALPN Protocol
+        ALPN string length: 10
+        ALPN Next Protocol: acme-tls/1
+  ```
+
+  On receipt of this Client Hello the application must use the ephemeral verification certification to complete the TLS handshake.
+  <br />
 
   ```
   POST https://pebble.acmelabs.local:14000/authZ/2UiaScz6g6kxJtoZ5EWyqvgaqmJ8BpQx47nfUuhC6Wo
